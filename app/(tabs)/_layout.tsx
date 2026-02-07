@@ -1,8 +1,8 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Image } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -13,21 +13,80 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarInactiveTintColor: Colors[colorScheme ?? 'light'].tabIconDefault,
+        tabBarStyle: {
+          backgroundColor: '#0A0A0A',
+          borderTopColor: '#2A2A2A',
+          borderTopWidth: 1,
+          paddingTop: 8,
+          paddingBottom: 8,
+          height: 65,
+        },
         headerShown: false,
         tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Image
+              source={require('@/assets/icons/icons8-home-27.png')}
+              style={{ 
+                width: 24, 
+                height: 24,
+                tintColor: focused ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].tabIconDefault,
+              }}
+            />
+          ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="chat"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Chat',
+          tabBarIcon: ({ focused, color }) => (
+            <Image
+              source={require('@/assets/icons/icons8-chat-27.png')}
+              style={{ 
+                width: 24, 
+                height: 24,
+                tintColor: focused ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].tabIconDefault,
+              }}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="review"
+        options={{
+          title: 'Review',
+          tabBarIcon: ({ focused, color }) => (
+            <Image
+              source={require('@/assets/icons/icons8-loop-27.png')}
+              style={{ 
+                width: 24, 
+                height: 24,
+                tintColor: focused ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].tabIconDefault,
+              }}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="course"
+        options={{
+          title: 'Course',
+          tabBarIcon: ({ focused, color }) => (
+            <Image
+              source={require('@/assets/icons/icons8-progress-27.png')}
+              style={{ 
+                width: 24, 
+                height: 24,
+                tintColor: focused ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].tabIconDefault,
+              }}
+            />
+          ),
         }}
       />
     </Tabs>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,22 +8,113 @@ import {
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, typography, spacing, borders, progressBar } from '../../constants/theme';
+import { unifiedProgressService, UserProgress } from '../../services/progress-service';
+import { ScenarioService, type Scenario } from '../../lib/scenarios-service';
+import { supabase } from '@/lib/supabase';
+
+type ScenarioWithLevel = Scenario & {
+  level_number: number;
+};
 
 export default function HomeScreen() {
-  const progressPercentage = 67;
-  const currentUnit = {
-    title: 'Daily Routines',
-    number: 3,
-    total: 12,
-    progress: 65,
+  const router = useRouter();
+  const [progress, setProgress] = useState<UserProgress | null>(null);
+  const [scenarios, setScenarios] = useState<ScenarioWithLevel[]>([]);
+  const [currentUnitTitle, setCurrentUnitTitle] = useState<string>('');
+
+  // Load progress and scenarios when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        const userProgress = await unifiedProgressService.getProgress();
+        setProgress(userProgress);
+
+        // Load scenarios for Practice by Immersion
+        try {
+          const { data: scenariosData } = await supabase
+            .from('scenarios')
+            .select(`
+              *,
+              levels!inner (
+                level_number
+              )
+            `)
+            .order('order_index')
+            .limit(3);
+
+          if (scenariosData) {
+            const scenariosWithLevels: ScenarioWithLevel[] = scenariosData.map((item: any) => ({
+              ...item,
+              level_number: item.levels.level_number,
+            }));
+            setScenarios(scenariosWithLevels);
+          }
+        } catch (err) {
+          console.error('Error loading scenarios:', err);
+        }
+
+        // Get current unit title from database
+        if (userProgress.currentLevel && userProgress.currentUnit) {
+          try {
+            const { data: unitData } = await supabase
+              .from('units')
+              .select('title')
+              .eq('level_number', userProgress.currentLevel)
+              .eq('unit_number', userProgress.currentUnit)
+              .single();
+
+            if (unitData) {
+              setCurrentUnitTitle(unitData.title);
+            }
+          } catch (err) {
+            console.error('Error loading unit title:', err);
+          }
+        }
+      };
+      loadData();
+    }, [])
+  );
+
+  // Calculate overall HSK level progress
+  const progressPercentage = progress 
+    ? Math.min(Math.round((progress.completedLessons.length / 50) * 100), 100) 
+    : 0;
+
+  const currentUnit = progress && currentUnitTitle
+    ? {
+        title: currentUnitTitle,
+        number: progress.currentUnit,
+        total: 12,
+        progress: Math.min(Math.round((progress.currentLesson / 10) * 100), 100),
+      }
+    : null;
+
+  const handleCurrentUnit = () => {
+    if (!progress) return;
+    router.push({
+      pathname: '/(tabs)/course/[id]' as any,
+      params: {
+        id: `hsk${progress.currentLevel}`,
+        unit: progress.currentUnit,
+        lesson: progress.currentLesson,
+      },
+    });
   };
 
-  const practiceItems = [
-    'Text langcat for a referral',
-    'Talk to langcat for reserving seats at a restaurant',
-    'Listen to langcat to discern its meaning',
-  ];
+  const handleScenario = (scenario: ScenarioWithLevel) => {
+    router.push(`/scenario/${scenario.scenario_key}` as any);
+  };
+
+  const handleReviewNotes = () => {
+    router.push({
+      pathname: '/(tabs)/course/[id]' as any,
+      params: {
+        id: `hsk${progress?.currentLevel || 1}`,
+      },
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -36,14 +127,16 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerSubtitle}>MANADARIN · HSK 1</Text>
+          <Text style={styles.headerSubtitle}>
+            MANDARIN · HSK {progress?.currentLevel || 1}
+          </Text>
           <Text style={styles.headerTitle}>Progress</Text>
         </View>
 
         {/* Main Progress */}
         <View style={styles.mainProgressSection}>
           <Text style={styles.progressPercentage}>{progressPercentage}%</Text>
-          <Text style={styles.progressLabel}>HSK 1</Text>
+          <Text style={styles.progressLabel}>HSK {progress?.currentLevel || 1}</Text>
           <View style={styles.progressBarContainer}>
             <View style={styles.progressBarBackground}>
               <LinearGradient
@@ -56,76 +149,93 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Current Unit */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>CURRENT UNIT</Text>
-          <TouchableOpacity style={styles.unitCard} activeOpacity={0.8}>
-            <View style={styles.unitContent}>
-              <Text style={styles.unitTitle}>{currentUnit.title}</Text>
-              <Text style={styles.unitSubtitle}>
-                UNIT {currentUnit.number} of {currentUnit.total}
-              </Text>
-              <View style={styles.unitProgressContainer}>
-                <View style={styles.unitProgressBar}>
-                  <LinearGradient
-                    colors={[colors.primary, colors.primaryDark]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.unitProgressFill, { width: `${currentUnit.progress}%` }]}
-                  />
+        {/* Current Unit - Only show if user has started lessons */}
+        {currentUnit && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>CURRENT UNIT</Text>
+            <TouchableOpacity 
+              style={styles.unitCard} 
+              activeOpacity={0.8}
+              onPress={handleCurrentUnit}
+            >
+              <View style={styles.unitContent}>
+                <Text style={styles.unitTitle}>{currentUnit.title}</Text>
+                <Text style={styles.unitSubtitle}>
+                  UNIT {currentUnit.number} of {currentUnit.total}
+                </Text>
+                <View style={styles.unitProgressContainer}>
+                  <View style={styles.unitProgressBar}>
+                    <LinearGradient
+                      colors={[colors.primary, colors.primaryDark]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[styles.unitProgressFill, { width: `${currentUnit.progress}%` }]}
+                    />
+                  </View>
+                  <Text style={styles.unitProgressText}>{currentUnit.progress}%</Text>
                 </View>
-                <Text style={styles.unitProgressText}>{currentUnit.progress}%</Text>
               </View>
-            </View>
-            <View style={styles.arrowIcon}>
-              <Text style={styles.arrowText}>→</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Practice by Immersion */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>PRACTICE BY IMMERSION</Text>
-          <View style={styles.practiceContainer}>
-            {practiceItems.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={[
-                  styles.practiceItem,
-                  index < practiceItems.length - 1 && styles.practiceItemWithBorder
-                ]}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.practiceItemText}>{item}</Text>
-                <View style={styles.arrowIcon}>
-                  <Text style={styles.arrowText}>→</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+              <View style={styles.arrowIcon}>
+                <Text style={styles.arrowText}>--</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
-        {/* Test Yourself */}
+        {/* Practice by Immersion - Show actual scenarios */}
+        {scenarios.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>PRACTICE BY IMMERSION</Text>
+            <View style={styles.practiceContainer}>
+              {scenarios.map((scenario, index) => (
+                <TouchableOpacity 
+                  key={scenario.id} 
+                  style={[
+                    styles.practiceItem,
+                    index < scenarios.length - 1 && styles.practiceItemWithBorder
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() => handleScenario(scenario)}
+                >
+                  <Text style={styles.practiceItemText}>{scenario.title}</Text>
+                  <View style={styles.arrowIcon}>
+                    <Text style={styles.arrowText}>--</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Test Yourself - Commented out for now */}
+        {/* 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>TEST YOURSELF</Text>
           <View style={styles.practiceContainer}>
             <TouchableOpacity style={styles.practiceItem} activeOpacity={0.8}>
               <Text style={styles.practiceItemText}>Assignment 1</Text>
               <View style={styles.arrowIcon}>
-                <Text style={styles.arrowText}>→</Text>
+                <Text style={styles.arrowText}>â†’</Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
+        */}
 
-        {/* Review Notes */}
+        {/* Review Notes - References current HSK level */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>REVIEW YOUR NOTES</Text>
           <View style={styles.practiceContainer}>
-            <TouchableOpacity style={styles.practiceItem} activeOpacity={0.8}>
-              <Text style={styles.practiceItemText}>People and Places</Text>
+            <TouchableOpacity 
+              style={styles.practiceItem} 
+              activeOpacity={0.8}
+              onPress={handleReviewNotes}
+            >
+              <Text style={styles.practiceItemText}>
+                HSK {progress?.currentLevel || 1} Vocabulary & Grammar
+              </Text>
               <View style={styles.arrowIcon}>
-                <Text style={styles.arrowText}>→</Text>
+                <Text style={styles.arrowText}>--</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -159,16 +269,15 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 38,
-    fontFamily: 'ArchivoBlack_400Regular',  // Archivo Black font
-    fontWeight: '900',
-    letterSpacing: 0.38,  // 1% of 38px
+    fontFamily: 'ArchivoBlack_400Regular', 
+    letterSpacing: 0.38,
     color: colors.text,
   },
   mainProgressSection: {
     marginBottom: spacing.xxxl,
   },
   progressPercentage: {
-    fontSize: 48,  // Smaller than before (was 56)
+    fontSize: 48,
     color: colors.text,
     fontWeight: '700',
     marginBottom: 8,
@@ -178,7 +287,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     fontWeight: '500',
-    marginBottom: 8,  // Space between label and progress bar
+    marginBottom: 8,
   },
   progressBarContainer: {
     position: 'relative',

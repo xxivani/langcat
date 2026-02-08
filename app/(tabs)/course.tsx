@@ -9,10 +9,11 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { CheckmarkIcon } from '@/components/CheckmarkIcon';
 import { colors, typography, spacing, borders } from '../../constants/theme';
 import { CurriculumService } from '../../lib/database';
+import { unifiedProgressService } from '../../services/progress-service';
 import type { Level, Unit, Lesson } from '../../lib/supabase';
 
 interface LessonWithProgress extends Lesson {
@@ -39,14 +40,19 @@ export default function CourseStructureScreen() {
   // TODO: Replace with actual course ID from your database
   const courseId = '00000000-0000-0000-0000-000000000001';
 
-  useEffect(() => {
-    loadCourseStructure();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCourseStructure();
+    }, [])
+  );
 
   async function loadCourseStructure() {
     try {
       setLoading(true);
       setError(null);
+
+      // Get user progress
+      const userProgress = await unifiedProgressService.getProgress();
 
       // Fetch all levels (HSK 1, 2, 3, etc.)
       const levelsData = await CurriculumService.getLevels(courseId);
@@ -63,10 +69,18 @@ export default function CourseStructureScreen() {
               const lessonsWithProgress = await Promise.all(
                 lessons.map(async (lesson) => {
                   const vocab = await CurriculumService.getVocabulary(lesson.id);
+                  
+                  // Check if lesson is completed
+                  const isCompleted = await unifiedProgressService.isLessonCompleted(
+                    level.level_number,
+                    unit.unit_number,
+                    lesson.lesson_number
+                  );
+
                   return {
                     ...lesson,
                     vocabularyCount: vocab.length,
-                    progress: 0, // TODO: Get actual progress
+                    progress: isCompleted ? 100 : 0,
                   };
                 })
               );
@@ -151,7 +165,7 @@ export default function CourseStructureScreen() {
         <StatusBar barStyle="light-content" />
         <Text style={styles.errorText}>No courses found</Text>
         <Text style={styles.errorHint}>
-          Make sure you've run all SQL files in Supabase
+          Make sure you&aposve run all SQL files in Supabase
         </Text>
         <TouchableOpacity style={styles.retryButton} onPress={loadCourseStructure}>
           <Text style={styles.retryButtonText}>Retry</Text>
@@ -309,7 +323,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 38,
-    fontWeight: '700',
+    fontFamily: 'ArchivoBlack_400Regular', 
     letterSpacing: 0.38,
     color: colors.text,
   },

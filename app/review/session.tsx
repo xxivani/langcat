@@ -12,11 +12,12 @@ import {
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { colors, typography, spacing, borders } from '../../constants/theme';
 import { CurriculumService, FlashcardService } from '../../lib/database';
+import { supabase } from '../../lib/supabase';
 import type { Vocabulary } from '../../lib/supabase';
 
 export default function ReviewSessionScreen() {
   const router = useRouter();
-  const { hskLevel } = useLocalSearchParams<{ hskLevel?: string }>();
+  const { hskLevel, deckId } = useLocalSearchParams<{ hskLevel?: string; deckId?: string }>();
   
   const [vocabulary, setVocabulary] = useState<Vocabulary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ export default function ReviewSessionScreen() {
 
   useEffect(() => {
     loadVocabulary();
-  }, [hskLevel]);
+  }, [hskLevel, deckId]);
 
   async function loadVocabulary() {
     try {
@@ -40,9 +41,60 @@ export default function ReviewSessionScreen() {
 
       let vocab: Vocabulary[];
 
-      if (hskLevel) {
-        // Load vocabulary for specific HSK level
-        vocab = await CurriculumService.getVocabularyByHSKLevel(parseInt(hskLevel));
+      if (deckId) {
+        // Load vocabulary for specific custom deck
+        const { data, error } = await supabase
+          .from('vocabulary')
+          .select('*')
+          .eq('deck_id', deckId);
+        
+        if (error) throw error;
+        vocab = data || [];
+        
+        // Initialize flashcard records
+        const vocabularyIds = vocab.map(v => v.id);
+        await FlashcardService.ensureFlashcardsExist(userId, vocabularyIds);
+        
+        // Get due flashcards
+        const allFlashcards = await FlashcardService.getFlashcardsForVocabulary(userId, vocabularyIds);
+        const now = new Date();
+        const dueVocabIds = allFlashcards
+          .filter(f => new Date(f.next_review_at) <= now)
+          .map(f => f.vocabulary_id);
+        
+        // Filter to only include due cards
+        vocab = vocab.filter(v => dueVocabIds.includes(v.id));
+      } else if (hskLevel) {
+        const level = parseInt(hskLevel);
+        
+        if (level === 0) {
+          // Load custom cards (legacy, no deckId)
+          const { data, error } = await supabase
+            .from('vocabulary')
+            .select('*')
+            .eq('is_custom', true)
+            .is('deck_id', null);
+          
+          if (error) throw error;
+          vocab = data || [];
+        } else {
+          // Load vocabulary for specific HSK level
+          vocab = await CurriculumService.getVocabularyByHSKLevel(level);
+        }
+        
+        // Initialize flashcard records for any words that don't have them yet
+        const vocabularyIds = vocab.map(v => v.id);
+        await FlashcardService.ensureFlashcardsExist(userId, vocabularyIds);
+        
+        // Now get the due flashcards for this level
+        const allFlashcards = await FlashcardService.getFlashcardsForVocabulary(userId, vocabularyIds);
+        const now = new Date();
+        const dueVocabIds = allFlashcards
+          .filter(f => new Date(f.next_review_at) <= now)
+          .map(f => f.vocabulary_id);
+        
+        // Filter to only include due cards
+        vocab = vocab.filter(v => dueVocabIds.includes(v.id));
       } else {
         // Load due flashcards from all levels
         const dueFlashcards = await FlashcardService.getDueFlashcards(userId, 100);
@@ -291,7 +343,7 @@ export default function ReviewSessionScreen() {
               disabled={currentCardIndex === 0}
             >
               <Text style={[styles.navButtonText, currentCardIndex === 0 && styles.navButtonTextDisabled]}>
-                ← Previous
+                Previous
               </Text>
             </TouchableOpacity>
 
@@ -301,7 +353,7 @@ export default function ReviewSessionScreen() {
               disabled={isLastCard}
             >
               <Text style={[styles.navButtonText, isLastCard && styles.navButtonTextDisabled]}>
-                {isLastCard ? 'Finish' : 'Skip →'}
+                {isLastCard ? 'Finish' : 'Skip'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -383,6 +435,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.xl,
+    paddingBottom: 100,
   },
   progressContainer: {
     marginBottom: spacing.xl,

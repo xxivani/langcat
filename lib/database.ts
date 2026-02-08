@@ -287,6 +287,56 @@ export class ProgressService {
  */
 export class FlashcardService {
   /**
+   * Ensure flashcard records exist for given vocabulary IDs
+   * Creates records with next_review_at = now for new cards
+   */
+  static async ensureFlashcardsExist(userId: string, vocabularyIds: string[]) {
+    // Check which vocabulary IDs already have flashcard records
+    const { data: existing } = await supabase
+      .from('flashcard_reviews')
+      .select('vocabulary_id')
+      .eq('user_id', userId)
+      .in('vocabulary_id', vocabularyIds);
+
+    const existingIds = new Set(existing?.map(f => f.vocabulary_id) || []);
+    const newIds = vocabularyIds.filter(id => !existingIds.has(id));
+
+    if (newIds.length === 0) return;
+
+    // Create flashcard records for new vocabulary
+    const now = new Date().toISOString();
+    const newFlashcards = newIds.map(vocabId => ({
+      user_id: userId,
+      vocabulary_id: vocabId,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      last_reviewed_at: now,
+      next_review_at: now, // Due immediately
+    }));
+
+    const { error } = await supabase
+      .from('flashcard_reviews')
+      .insert(newFlashcards);
+
+    if (error) throw error;
+  }
+
+  /**
+   * Get flashcard records for specific vocabulary IDs
+   */
+  static async getFlashcardsForVocabulary(userId: string, vocabularyIds: string[]) {
+    const { data, error } = await supabase
+      .from('flashcard_reviews')
+      .select('*')
+      .eq('user_id', userId)
+      .in('vocabulary_id', vocabularyIds);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  /**
    * Get due flashcards for review
    */
   static async getDueFlashcards(userId: string, limit: number = 20) {
@@ -374,6 +424,8 @@ export class FlashcardService {
         repetitions: repetitions,
         last_reviewed_at: now.toISOString(),
         next_review_at: nextReview.toISOString(),
+      }, {
+        onConflict: 'user_id,vocabulary_id'
       })
       .select()
       .single();

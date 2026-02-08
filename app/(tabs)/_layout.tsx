@@ -1,9 +1,10 @@
+
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Image } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { Colors } from '@/constants/theme';
+import { Colors, colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
@@ -15,15 +16,17 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         tabBarInactiveTintColor: Colors[colorScheme ?? 'light'].tabIconDefault,
         tabBarStyle: {
-          backgroundColor: '#0A0A0A',
-          borderTopColor: '#2A2A2A',
+          backgroundColor: colors.background, // Changed from '#0A0A0A'
+          borderTopColor: colors.border,     // Changed from '#2A2A2A'
           borderTopWidth: 1,
           paddingTop: 8,
-          paddingBottom: 8,
+          paddingBottom: 98,
           height: 65,
         },
         headerShown: false,
         tabBarButton: HapticTab,
+        // IMPORTANT: Add this to prevent white flash on tab switches
+        sceneStyle: { backgroundColor: colors.background },
       }}>
       <Tabs.Screen
         name="home"

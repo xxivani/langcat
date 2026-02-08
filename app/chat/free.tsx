@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,20 +9,13 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Image,
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { colors, typography, spacing, borders } from '../../constants/theme';
-import { ScenarioService, type Scenario } from '../../lib/scenarios-service';
 import { geminiService, type GeminiMessage, type ScenarioResponse } from '../../services/gemini-service';
 import { audioService } from '../../lib/audio-service';
-import { voiceService } from '../../lib/voice-service';
-import { GoogleGenAI } from '@google/genai';
-import Constants from 'expo-constants';
-
-const GEMINI_API_KEY = Constants.expoConfig?.extra?.geminiApiKey || process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
 
 type Message = {
   id: string;
@@ -32,31 +25,25 @@ type Message = {
   english?: string;
 };
 
-export default function ScenarioScreen() {
+export default function FreeChatScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
   const scrollViewRef = useRef<ScrollView>(null);
-  
-  // Scenario data
-  const [scenario, setScenario] = useState<Scenario | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   
   // Chat state
   const [mode, setMode] = useState<'text' | 'voice'>('text');
   const [inputText, setInputText] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isSending, setIsSending] = useState(false);
-  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
-  
-  // Conversation history for Gemini (excludes initial message)
-  const [conversationHistory, setConversationHistory] = useState<GeminiMessage[]>([]);
-
-  useEffect(() => {
-    if (id) {
-      loadScenario();
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '0',
+      role: 'assistant',
+      chinese: '你好！我是LangCat。我们可以用中文聊任何话题。你想聊什么？',
+      pinyin: 'Nǐ hǎo! Wǒ shì LangCat. Wǒmen kěyǐ yòng Zhōngwén liáo rènhé huàtí. Nǐ xiǎng liáo shénme?',
+      english: 'Hello! I\'m LangCat. We can chat about anything in Chinese. What would you like to talk about?',
     }
-  }, [id]);
+  ]);
+  const [isSending, setIsSending] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState<GeminiMessage[]>([]);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -67,35 +54,8 @@ export default function ScenarioScreen() {
     }
   }, [messages]);
 
-  async function loadScenario() {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Load scenario by key (id is the scenario_key like "hsk2_restaurant")
-      const scenarioData = await ScenarioService.getScenarioByKey(id);
-      setScenario(scenarioData);
-
-      // Set initial message from AI
-      const initialMessage: Message = {
-        id: '0',
-        role: 'assistant',
-        chinese: scenarioData.initial_message.chinese,
-        pinyin: scenarioData.initial_message.pinyin,
-        english: scenarioData.initial_message.english,
-      };
-      setMessages([initialMessage]);
-
-    } catch (err: any) {
-      console.error('Error loading scenario:', err);
-      setError(err.message || 'Failed to load scenario');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !scenario || isSending) return;
+    if (!inputText.trim() || isSending) return;
 
     const userMessageText = inputText.trim();
     const userMessage: Message = {
@@ -109,7 +69,7 @@ export default function ScenarioScreen() {
     setIsSending(true);
 
     try {
-      // Add user message to conversation history for Gemini
+      // Add user message to conversation history
       const updatedHistory: GeminiMessage[] = [
         ...conversationHistory,
         {
@@ -118,10 +78,21 @@ export default function ScenarioScreen() {
         }
       ];
 
+      // Define free chat scenario context
+      const freeChatScenario = {
+        system_prompt: `You are LangCat, a friendly Chinese language tutor. Have a natural, engaging conversation in Mandarin Chinese. Be encouraging, patient, and help the user practice their Chinese naturally.
+
+Match the user's level - if they use simple Chinese, keep your responses simple. If they use advanced Chinese, you can be more sophisticated.
+
+Stay in character as a helpful language learning companion. Be conversational and friendly.`,
+        title: 'Free Chat',
+        category: 'Casual Conversation'
+      };
+
       // Get AI response from Gemini 3
       const response: ScenarioResponse = await geminiService.getScenarioResponse(
         userMessageText,
-        scenario,
+        freeChatScenario,
         conversationHistory
       );
 
@@ -164,17 +135,13 @@ export default function ScenarioScreen() {
 
   const handleListen = async (message: Message) => {
     try {
-      // If already playing this message, stop it
       if (playingMessageId === message.id) {
         await audioService.stopAudio();
         setPlayingMessageId(null);
         return;
       }
 
-      // Stop any currently playing audio
       await audioService.stopAudio();
-      
-      // Play the Chinese text
       setPlayingMessageId(message.id);
       await audioService.speakChinese(message.chinese);
       setPlayingMessageId(null);
@@ -182,133 +149,20 @@ export default function ScenarioScreen() {
     } catch (error: any) {
       console.error('Error playing audio:', error);
       setPlayingMessageId(null);
-      
-      // Could show an error toast here
       alert(`Failed to play audio: ${error.message}`);
     }
   };
 
-  const [isRecording, setIsRecording] = useState(false);
-
-  const handleVoicePress = async () => {
-    if (!scenario) return;
-    
-    try {
-      if (isRecording) {
-        // Stop recording
-        setIsRecording(false);
-        setIsSending(true);
-        
-        const audioUri = await voiceService.stopRecording();
-        const transcribedText = await voiceService.transcribeAudio(audioUri);
-        
-        // Show user message
-        const userMessage: Message = {
-          id: Date.now().toString(),
-          role: 'user',
-          chinese: transcribedText,
-        };
-        setMessages(prev => [...prev, userMessage]);
-        
-        // Update conversation history
-        const updatedHistory: GeminiMessage[] = [
-          ...conversationHistory,
-          { role: 'user', parts: [{ text: transcribedText }] }
-        ];
-
-        // Get text response first
-        const textResponse = await geminiService.getScenarioResponse(
-          transcribedText,
-          scenario,
-          conversationHistory
-        );
-
-        // Show AI message
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          chinese: textResponse.chinese,
-          pinyin: textResponse.pinyin,
-          english: textResponse.english,
-        };
-        setMessages(prev => [...prev, aiMessage]);
-
-        setConversationHistory([
-          ...updatedHistory,
-          { role: 'model', parts: [{ text: JSON.stringify(textResponse) }] }
-        ]);
-
-        // Now convert to audio and play
-        const audioResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-preview-tts',
-          contents: textResponse.chinese, // Proper array format
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Aoede' }
-              }
-            }
-          }
-        });
-
-        // Play audio
-        const audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (audioData) {
-          await audioService.playAudioData(audioData);
-        }
-        
-        setIsSending(false);
-        
-      } else {
-        // Start recording
-        await voiceService.startRecording();
-        setIsRecording(true);
-      }
-    } catch (error: any) {
-      console.error('Voice error:', error);
-      setIsRecording(false);
-      setIsSending(false);
-      alert(`Voice error: ${error.message}`);
-    }
+  const handleVoicePress = () => {
+    // TODO: Implement voice recording with Gemini Live API
+    console.log('Voice recording not yet implemented');
   };
-
-  if (loading) {
-    return (
-      <>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={[styles.container, styles.centerContent]}>
-          <StatusBar barStyle="light-content" />
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading scenario...</Text>
-        </View>
-      </>
-    );
-  }
-
-  if (error || !scenario) {
-    return (
-      <>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={[styles.container, styles.centerContent]}>
-          <StatusBar barStyle="light-content" />
-          <Text style={styles.errorText}>{error || 'Scenario not found'}</Text>
-          <Text style={styles.errorHint}>
-            Make sure your Gemini API key is configured correctly
-          </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
-            <Text style={styles.retryButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </>
-    );
-  }
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView 
-        style={[styles.container, { paddingBottom: 54 }]}
+        style={[styles.container, { paddingBottom:54 }]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
@@ -320,8 +174,8 @@ export default function ScenarioScreen() {
             <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
           <View style={styles.headerContent}>
-            <Text style={styles.headerCategory}>{scenario.category}</Text>
-            <Text style={styles.headerTitle}>{scenario.title}</Text>
+            <Text style={styles.headerCategory}>FREE CONVERSATION</Text>
+            <Text style={styles.headerTitle}>Chat with LangCat</Text>
           </View>
         </View>
 
@@ -409,7 +263,7 @@ export default function ScenarioScreen() {
           {isSending && (
             <View style={styles.typingIndicator}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.typingText}>AI is typing...</Text>
+              <Text style={styles.typingText}>LangCat is typing...</Text>
             </View>
           )}
 
@@ -441,26 +295,16 @@ export default function ScenarioScreen() {
         ) : (
           <View style={styles.voiceContainer}>
             <TouchableOpacity 
-              style={[
-                styles.micButton, 
-                isRecording && { backgroundColor: '#ff4444' },
-                isSending && { opacity: 0.5 }
-              ]} 
+              style={styles.micButton} 
+              activeOpacity={0.8}
               onPress={handleVoicePress}
-              disabled={isSending}
             >
-              {isSending ? (
-                <ActivityIndicator size="large" color={colors.black} />
-              ) : (
-                <Image
-                  source={require('@/assets/icons/icons8-voice-recorder-64.png')}
-                  style={styles.micIcon}
-                />
-              )}
+              <Image
+                source={require('@/assets/icons/icons8-voice-recorder-64.png')}
+                style={styles.micIcon}
+              />
             </TouchableOpacity>
-            <Text style={styles.voiceInstructions}>
-              {isSending ? 'PROCESSING...' : isRecording ? 'TAP TO STOP' : 'TAP TO SPEAK'}
-            </Text>
+            <Text style={styles.voiceInstructions}>TAP TO SPEAK</Text>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -472,11 +316,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
   },
   header: {
     flexDirection: 'row',
@@ -680,34 +519,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 1,
-  },
-  loadingText: {
-    marginTop: spacing.lg,
-    fontSize: 15,
-    color: colors.textSecondary,
-  },
-  errorText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#8B4545',
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  errorHint: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  retryButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: borders.radius,
-  },
-  retryButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.black,
   },
 });

@@ -66,7 +66,7 @@ export const typography = {
   headerLarge: {
     fontSize: 38,
     fontWeight: '700' as const,
-    
+    fontFamily: 'ArchivoBlack_400Regular', 
   },
   headerSmall: {
     fontSize: 10,

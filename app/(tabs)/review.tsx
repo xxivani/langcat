@@ -9,126 +9,138 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography, spacing, borders } from '../../constants/theme';
-import { CurriculumService, FlashcardService, ProgressService } from '../../lib/database';
+import { CurriculumService } from '../../lib/database';
+import { unifiedProgressService } from '../../services/progress-service';
 import { supabase } from '../../lib/supabase';
 
 interface DeckData {
   id: string;
   title: string;
-  level: string;
-  hskLevel: number;
+  hskLevel?: number;
   totalCards: number;
   dueCards: number;
-  newCards: number;
-  accuracy: number;
-  isLocked: boolean;
-  lastReviewed: string | null;
+  isCustom: boolean;
 }
 
 export default function ReviewScreen() {
   const router = useRouter();
-  const [decks, setDecks] = useState<DeckData[]>([]);
+  const [hskDecks, setHskDecks] = useState<DeckData[]>([]);
+  const [customDecks, setCustomDecks] = useState<DeckData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [totalDueCards, setTotalDueCards] = useState(0);
 
   // TODO: Get actual user ID from auth
-  // Using a valid UUID format for demo purposes
   const userId = '00000000-0000-0000-0000-000000000001';
 
-  useEffect(() => {
-    loadReviewData();
-  }, []);
+  // Reload data whenever the screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadReviewData();
+    }, [])
+  );
 
   async function loadReviewData() {
     try {
       setLoading(true);
 
-      // Get flashcard stats
-      const stats = await FlashcardService.getFlashcardStats(userId);
-      setTotalDueCards(stats.due);
-
-      // First, get all available HSK levels from the database
+      // Load HSK decks
       const allVocab = await supabase
         .from('vocabulary')
         .select('hsk_level')
+        .is('deck_id', null)
         .order('hsk_level');
       
-      if (!allVocab.data) {
-        setDecks([]);
-        return;
+      if (allVocab.data) {
+        const availableHskLevels = [...new Set(allVocab.data.map(v => v.hsk_level))].sort();
+
+        const hskDeckPromises = availableHskLevels.map(async (hskLevel) => {
+          try {
+            const vocabulary = await CurriculumService.getVocabularyByHSKLevel(hskLevel);
+            const vocabularyIds = vocabulary.map(v => v.id);
+            
+            const flashcardProgress = await unifiedProgressService.getFlashcardProgressForVocabulary(vocabularyIds);
+            const now = new Date();
+            
+            const existingVocabIds = new Set(flashcardProgress.map(f => f.vocabularyId));
+            const newCards = vocabulary.filter(v => !existingVocabIds.has(v.id)).length;
+            const dueReviewCards = flashcardProgress.filter(f => 
+              new Date(f.nextReviewAt) <= now
+            ).length;
+            const totalDue = newCards + dueReviewCards;
+
+            return {
+              id: `hsk${hskLevel}`,
+              title: `HSK ${hskLevel}`,
+              hskLevel,
+              totalCards: vocabulary.length,
+              dueCards: totalDue,
+              isCustom: false,
+            };
+          } catch (err) {
+            console.error(`Error loading HSK ${hskLevel} deck:`, err);
+            return null;
+          }
+        });
+
+        const loadedHskDecks = (await Promise.all(hskDeckPromises))
+          .filter(deck => deck !== null) as DeckData[];
+        setHskDecks(loadedHskDecks);
       }
 
-      // Get unique HSK levels that actually have vocabulary
-      const availableHskLevels = [...new Set(allVocab.data.map(v => v.hsk_level))].sort();
+      // Load custom decks
+      const { data: customDecksData } = await supabase
+        .from('custom_decks')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-      // Load decks only for available HSK levels
-      const deckPromises = availableHskLevels.map(async (hskLevel) => {
-        try {
-          // Get all vocabulary for this HSK level
-          const vocabulary = await CurriculumService.getVocabularyByHSKLevel(hskLevel);
-          
-          // Get flashcard progress for this HSK level
-          const vocabularyIds = vocabulary.map(v => v.id);
-          
-          let flashcardProgress: any[] = [];
-          if (vocabularyIds.length > 0) {
-            const { data } = await supabase
-              .from('flashcard_reviews')
+      if (customDecksData) {
+        const customDeckPromises = customDecksData.map(async (deck) => {
+          try {
+            const { data: deckVocab } = await supabase
+              .from('vocabulary')
               .select('*')
-              .eq('user_id', userId)
-              .in('vocabulary_id', vocabularyIds);
-            flashcardProgress = data || [];
+              .eq('deck_id', deck.id);
+
+            if (!deckVocab || deckVocab.length === 0) {
+              return {
+                id: deck.id,
+                title: deck.name,
+                totalCards: 0,
+                dueCards: 0,
+                isCustom: true,
+              };
+            }
+
+            const vocabularyIds = deckVocab.map(v => v.id);
+            const flashcardProgress = await unifiedProgressService.getFlashcardProgressForVocabulary(vocabularyIds);
+            
+            const now = new Date();
+            const existingVocabIds = new Set(flashcardProgress.map(f => f.vocabularyId));
+            const newCards = deckVocab.filter(v => !existingVocabIds.has(v.id)).length;
+            const dueReviewCards = flashcardProgress.filter(f => 
+              new Date(f.nextReviewAt) <= now
+            ).length;
+            const totalDue = newCards + dueReviewCards;
+
+            return {
+              id: deck.id,
+              title: deck.name,
+              totalCards: deckVocab.length,
+              dueCards: totalDue,
+              isCustom: true,
+            };
+          } catch (err) {
+            console.error(`Error loading custom deck ${deck.name}:`, err);
+            return null;
           }
+        });
 
-          const now = new Date();
-          const dueCards = flashcardProgress.filter(f => 
-            new Date(f.next_review_at) <= now
-          ).length;
-
-          const newCards = vocabulary.length - flashcardProgress.length;
-          
-          // Calculate accuracy
-          const reviewedCards = flashcardProgress.filter(f => f.repetitions > 0);
-          const successfulCards = reviewedCards.filter(f => f.repetitions >= 1).length;
-          const accuracy = reviewedCards.length > 0 
-            ? Math.round((successfulCards / reviewedCards.length) * 100)
-            : 0;
-
-          // Get last reviewed time
-          const lastReviewedCard = flashcardProgress.reduce((latest, current) => {
-            const currentDate = new Date(current.last_reviewed_at);
-            const latestDate = latest ? new Date(latest.last_reviewed_at) : new Date(0);
-            return currentDate > latestDate ? current : latest;
-          }, null as any);
-
-          const lastReviewed = lastReviewedCard 
-            ? formatTimeAgo(new Date(lastReviewedCard.last_reviewed_at))
-            : null;
-
-          // Don't lock any decks - all available levels are unlocked
-          const isLocked = false;
-
-          return {
-            id: `hsk${hskLevel}`,
-            title: `HSK ${hskLevel} Vocabulary`,
-            level: `HSK ${hskLevel}`,
-            hskLevel,
-            totalCards: vocabulary.length,
-            dueCards,
-            newCards,
-            accuracy,
-            isLocked,
-            lastReviewed,
-          };
-        } catch (err) {
-          console.error(`Error loading HSK ${hskLevel} deck:`, err);
-          return null;
-        }
-      });
-
-      const loadedDecks = (await Promise.all(deckPromises)).filter(deck => deck !== null) as DeckData[];
-      setDecks(loadedDecks);
+        const loadedCustomDecks = (await Promise.all(customDeckPromises))
+          .filter(deck => deck !== null) as DeckData[];
+        setCustomDecks(loadedCustomDecks);
+      }
 
     } catch (err) {
       console.error('Error loading review data:', err);
@@ -137,40 +149,25 @@ export default function ReviewScreen() {
     }
   }
 
-  function formatTimeAgo(date: Date): string {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 60) {
-      return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
-    } else if (diffHours < 24) {
-      return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+  async function handleDeckPress(deck: DeckData) {
+    if (deck.isCustom) {
+      // Navigate to custom deck detail (shows cards, allows review)
+      router.push({
+        pathname: '/review/deck',
+        params: { deckId: deck.id }
+      });
     } else {
-      return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+      // Navigate to HSK level review session
+      router.push({
+        pathname: '/review/session',
+        params: { hskLevel: deck.hskLevel }
+      });
     }
   }
 
-  async function handleStartReview() {
-    // Navigate to review session with due cards
-    router.push('/review/session');
-  }
-
-  async function handleDeckPress(deck: DeckData) {
-    if (deck.isLocked) return;
-    
-    // Navigate to review session filtered by HSK level
-    router.push({
-      pathname: '/review/session',
-      params: { hskLevel: deck.hskLevel }
-    });
-  }
-
-  async function handleAddCard() {
-    // TODO: Implement custom card creation
-    console.log('Add custom card');
+  async function handleAddDeck() {
+    // Navigate to deck creation screen
+    router.push('/review/add-deck');
   }
 
   if (loading) {
@@ -198,84 +195,90 @@ export default function ReviewScreen() {
           <TouchableOpacity 
             style={styles.addButton} 
             activeOpacity={0.8}
-            onPress={handleAddCard}
+            onPress={handleAddDeck}
           >
-            <Text style={styles.addButtonText}>+ ADD CARD</Text>
+            <Text style={styles.addButtonText}>+ ADD DECK</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Cards Due Today */}
-        {totalDueCards > 0 && (
-          <View style={styles.dueSection}>
-            <Text style={styles.dueText}>{totalDueCards} cards due today</Text>
-            <TouchableOpacity 
-              style={styles.startReviewButton}
-              activeOpacity={0.8}
-              onPress={handleStartReview}
-            >
-              <Text style={styles.startReviewButtonText}>
-                START REVIEW ({totalDueCards} CARDS)
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* HSK Decks */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>HSK DECKS</Text>
           
-          {decks.map((deck) => (
+          {hskDecks.map((deck) => (
             <TouchableOpacity
               key={deck.id}
-              style={[styles.deckCard, deck.isLocked && styles.deckCardLocked]}
-              activeOpacity={deck.isLocked ? 1 : 0.8}
-              disabled={deck.isLocked}
+              style={styles.deckCard}
+              activeOpacity={0.8}
               onPress={() => handleDeckPress(deck)}
             >
               <View style={styles.deckContent}>
-                <View style={styles.deckHeader}>
-                  <Text style={[styles.deckTitle, deck.isLocked && styles.deckTitleLocked]}>
-                    {deck.title}
-                  </Text>
-                  {deck.isLocked && (
-                    <View style={styles.lockIcon}>
-                      <View style={styles.lockBody} />
-                      <View style={styles.lockShackle} />
-                    </View>
-                  )}
-                </View>
+                <Text style={styles.deckTitle}>{deck.title}</Text>
                 
                 <Text style={styles.deckMeta}>
-                  Auto-generated · {deck.totalCards} total cards
+                  {deck.totalCards} cards - {deck.dueCards} due today
                 </Text>
 
-                {!deck.isLocked && (
-                  <View style={styles.deckStats}>
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{deck.dueCards}</Text>
-                      <Text style={styles.statLabel}>DUE</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{deck.newCards}</Text>
-                      <Text style={styles.statLabel}>NEW</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{deck.accuracy}%</Text>
-                      <Text style={styles.statLabel}>ACCURACY</Text>
-                    </View>
-                    {deck.lastReviewed && (
-                      <View style={styles.reviewTime}>
-                        <Text style={styles.reviewTimeText}>Last reviewed</Text>
-                        <Text style={styles.reviewTimeValue}>{deck.lastReviewed}</Text>
-                      </View>
-                    )}
-                  </View>
+                {deck.dueCards > 0 && (
+                  <TouchableOpacity 
+                    style={styles.reviewButton}
+                    activeOpacity={0.8}
+                    onPress={() => handleDeckPress(deck)}
+                  >
+                    <Text style={styles.reviewButtonText}>
+                      REVIEW ({deck.dueCards})
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Custom Decks */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>MY DECKS</Text>
+          
+          {customDecks.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No custom decks yet</Text>
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={handleAddDeck}
+              >
+                <Text style={styles.emptyStateButtonText}>Create Your First Deck</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            customDecks.map((deck) => (
+              <TouchableOpacity
+                key={deck.id}
+                style={styles.deckCard}
+                activeOpacity={0.8}
+                onPress={() => handleDeckPress(deck)}
+              >
+                <View style={styles.deckContent}>
+                  <Text style={styles.deckTitle}>{deck.title}</Text>
+                  
+                  <Text style={styles.deckMeta}>
+                    {deck.totalCards} cards - {deck.dueCards} due today
+                  </Text>
+
+                  {deck.dueCards > 0 && (
+                    <TouchableOpacity 
+                      style={styles.reviewButton}
+                      activeOpacity={0.8}
+                      onPress={() => handleDeckPress(deck)}
+                    >
+                      <Text style={styles.reviewButtonText}>
+                        REVIEW ({deck.dueCards})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
 
         <View style={{ height: 100 }} />
@@ -308,7 +311,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 38,
-    fontWeight: '700',
+    fontFamily: 'ArchivoBlack_400Regular', 
     letterSpacing: 0.38,
     color: colors.text,
   },
@@ -361,99 +364,57 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     marginBottom: spacing.lg,
   },
-  deckCardLocked: {
-    opacity: 0.5,
-  },
   deckContent: {
     flex: 1,
   },
-  deckHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  deckTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: spacing.sm,
   },
-  deckTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    flex: 1,
-  },
-  deckTitleLocked: {
-    color: colors.textSecondary,
-  },
-  lockIcon: {
-    width: 16,
-    height: 20,
-    position: 'relative',
-    marginLeft: spacing.sm,
-  },
-  lockBody: {
-    position: 'absolute',
-    bottom: 0,
-    left: 2,
-    width: 12,
-    height: 12,
-    backgroundColor: colors.textSecondary,
-    borderRadius: 2,
-  },
-  lockShackle: {
-    position: 'absolute',
-    top: 0,
-    left: 4,
-    width: 8,
-    height: 10,
-    borderWidth: 2,
-    borderColor: colors.textSecondary,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-    borderBottomWidth: 0,
-  },
   deckMeta: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '400',
     color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
-  deckStats: {
-    flexDirection: 'row',
+  reviewButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
     alignItems: 'center',
+    borderRadius: borders.radius,
   },
-  statItem: {
-    marginRight: spacing.xl,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 11,
+  reviewButtonText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.black,
     letterSpacing: 0.5,
   },
-  statDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: colors.border,
-    marginRight: spacing.xl,
+  emptyState: {
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: borders.width,
+    borderColor: colors.border,
+    borderRadius: borders.radius,
+    padding: spacing.xxl,
+    alignItems: 'center',
   },
-  reviewTime: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  reviewTimeText: {
-    fontSize: 11,
-    fontWeight: '600',
+  emptyStateText: {
+    fontSize: 15,
+    fontWeight: '400',
     color: colors.textSecondary,
-    marginBottom: 2,
+    marginBottom: spacing.lg,
   },
-  reviewTimeValue: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.text,
+  emptyStateButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: borders.radius,
+  },
+  emptyStateButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.black,
   },
   loadingText: {
     marginTop: spacing.lg,

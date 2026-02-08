@@ -12,7 +12,9 @@ import {
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { colors, typography, spacing, borders } from '../../constants/theme';
 import { CurriculumService } from '../../lib/database';
+import { unifiedProgressService } from '../../services/progress-service';
 import type { Lesson, Vocabulary } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 export default function LessonScreen() {
   const router = useRouter();
@@ -24,6 +26,8 @@ export default function LessonScreen() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [flipAnimation] = useState(new Animated.Value(0));
+  const [levelNumber, setLevelNumber] = useState<number>(0);
+  const [unitNumber, setUnitNumber] = useState<number>(0);
 
   useEffect(() => {
     if (id) {
@@ -39,6 +43,24 @@ export default function LessonScreen() {
       const lessonData = await CurriculumService.getLessonWithVocabulary(id);
       setLesson(lessonData);
       setVocabulary(lessonData.vocabulary || []);
+
+      // Fetch unit to get level info
+      const { data: unitData } = await supabase
+        .from('units')
+        .select('unit_number, levels!inner(level_number)')
+        .eq('id', lessonData.unit_id)
+        .single();
+
+      if (unitData) {
+        setUnitNumber(unitData.unit_number);
+        setLevelNumber((unitData.levels as any).level_number);
+      }
+
+      // Initialize flashcards for this lesson's vocabulary
+      const vocabularyIds = (lessonData.vocabulary || []).map(v => v.id);
+      if (vocabularyIds.length > 0) {
+        await unifiedProgressService.initializeFlashcards(vocabularyIds);
+      }
 
     } catch (err: any) {
       console.error('Error loading lesson:', err);
@@ -70,6 +92,27 @@ export default function LessonScreen() {
       setCurrentCardIndex(currentCardIndex - 1);
       setIsFlipped(false);
       flipAnimation.setValue(0);
+    }
+  };
+
+  const completeLesson = async () => {
+    if (!lesson || !levelNumber || !unitNumber) return;
+
+    try {
+      // Mark lesson as completed
+      await unifiedProgressService.completeLesson(
+        levelNumber,
+        unitNumber,
+        lesson.lesson_number
+      );
+
+      // Add words learned
+      await unifiedProgressService.addWordsLearned(vocabulary.length);
+
+      // Navigate back to course
+      router.back();
+    } catch (err) {
+      console.error('Error completing lesson:', err);
     }
   };
 
@@ -208,7 +251,7 @@ export default function LessonScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Navigation Buttons */}
+          {/* Navigation Buttons - FIXED WITH COMPLETE BUTTON */}
           <View style={styles.navigationButtons}>
             <TouchableOpacity
               style={[styles.navButton, currentCardIndex === 0 && styles.navButtonDisabled]}
@@ -220,15 +263,25 @@ export default function LessonScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.navButton, currentCardIndex === vocabulary.length - 1 && styles.navButtonDisabled]}
-              onPress={nextCard}
-              disabled={currentCardIndex === vocabulary.length - 1}
-            >
-              <Text style={[styles.navButtonText, currentCardIndex === vocabulary.length - 1 && styles.navButtonTextDisabled]}>
-                Next →
-              </Text>
-            </TouchableOpacity>
+            {currentCardIndex === vocabulary.length - 1 ? (
+              <TouchableOpacity
+                style={[styles.navButton, styles.completeButton]}
+                onPress={completeLesson}
+              >
+                <Text style={[styles.navButtonText, styles.completeButtonText]}>
+                  ✓ Complete Lesson
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.navButton}
+                onPress={nextCard}
+              >
+                <Text style={styles.navButtonText}>
+                  Next →
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Example Sentences Section */}
@@ -320,8 +373,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerCategory: {
-    ...typography.label,
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.textSecondary,
+    letterSpacing: 0.5,
     marginBottom: 4,
   },
   headerTitle: {
@@ -378,12 +433,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 5,
   },
-  cardFront: {
-    // Front styling
-  },
-  cardBack: {
-    // Back styling
-  },
+  cardFront: {},
+  cardBack: {},
   cardContent: {
     flex: 1,
     justifyContent: 'center',
@@ -464,6 +515,13 @@ const styles = StyleSheet.create({
   },
   navButtonTextDisabled: {
     color: colors.textMuted,
+  },
+  completeButton: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  completeButtonText: {
+    color: colors.black,
   },
   examplesSection: {
     marginBottom: spacing.xxl,

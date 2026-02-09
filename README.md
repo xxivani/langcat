@@ -1,50 +1,67 @@
-# Welcome to your Expo app 👋
+# LangCat
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A Chinese learning app built around conversational immersion, powered by Gemini 3.
 
-## Get started
+## Overview
 
-1. Install dependencies
+LangCat takes a fundamentally different approach to language learning. Instead of isolated drills and repetitive exercises, it uses Gemini 3 AI to create real, adaptive conversations in Chinese—delivering the immersive experience that studies consistently show is the most effective way to achieve fluency.
 
-   ```bash
-   npm install
-   ```
+## Features
 
-2. Start the app
+### Structured HSK Curriculum
+- Lessons aligned with official HSK (Hanyu Shuiping Kaoshi) standards
+- Vocabulary presented with Chinese characters, pinyin, and English translations
+- Progressive difficulty from beginner to advanced levels
 
-   ```bash
-   npx expo start
-   ```
+### AI-Powered Conversational Practice
+- **Contextual Conversations**: Gemini 3 maintains full conversation history for realistic dialogue
+- **Vocabulary-Constrained Learning**: AI responses limited to your learned vocabulary for scaffolded practice
+- **Pre-built Scenarios**: Practice ordering food, shopping, small talk, and more
+- **Multi-Format Responses**: Every AI response includes Chinese characters, pinyin, and English
+- **Flexible Input**: Type in Chinese characters OR pinyin—whatever you're comfortable with
 
-In the output, you'll find options to open the app in a
+### Voice & Audio Features
+- **Text-to-Speech**: Gemini TTS provides pronunciation guidance for every response
+- **Voice Chat Mode**: Practice speaking and listening skills in real-time conversations
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### Personalized Feedback
+- End any conversation to receive AI-generated performance analysis
+- Identifies grammar mistakes, vocabulary struggles, and areas for improvement
+- Like having a personal tutor review every practice session
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### Spaced Repetition Review
+- Flashcard system for long-term vocabulary retention
+- HSK-aligned word deck automatically generated from learned vocabulary
+- Scientifically-timed reviews to maximize retention with minimal effort
 
-## Get a fresh project
+## Get the App
 
-When you're ready, run:
+Try LangCat: [https://langcat-landing-page.vercel.app](https://langcat-landing-page.vercel.app)
 
-```bash
-npm run reset-project
-```
+## Tech Stack
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- **Frontend**: React Native with Expo
+- **AI/ML**: Google Gemini 3 Flash Preview API
+- **Text-to-Speech**: Gemini TTS
+- **Database**: Supabase
+- **Language**: TypeScript
 
-## Learn more
+## How Gemini 3 Powers LangCat
 
-To learn more about developing your project with Expo, look at the following resources:
+LangCat wouldn't be possible without Gemini 3's advanced language capabilities:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+1. **Contextual Understanding**: Maintains conversation history for realistic, multi-turn dialogues
+2. **Prompt Following**: Reliably constrains responses to specific vocabulary sets
+3. **Multi-Format Generation**: Produces Chinese, pinyin, and English simultaneously
+4. **Analysis Capabilities**: Reviews entire conversations to provide personalized feedback
+5. **TTS Integration**: Provides accurate pronunciation for tonal languages
 
-## Join the community
 
-Join our community of developers creating universal apps.
+## Built For
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Google DeepMind Gemini 3 Hackathon (December 2025 - February 2026)
+
+## Why Immersion Works
+
+Decades of second language acquisition research—from Stephen Krashen's input hypothesis to modern studies on communicative competence—consistently show that conversational immersion is the most effective path to fluency. LangCat brings this proven method to anyone with a smartphone, powered by Gemini 3.
+

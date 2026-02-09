@@ -46,10 +46,12 @@ export default {
       reactCompiler: true
     },
     extra: {
-    geminiApiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY,
-    eas: {
-      projectId: "7dd67146-76f3-4cc4-bb79-66006cd4be88"
+      geminiApiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY,
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      eas: {
+        projectId: "7dd67146-76f3-4cc4-bb79-66006cd4be88"
+      }
     }
-  }
   }
 };

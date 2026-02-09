@@ -32,6 +32,13 @@ type Message = {
   english?: string;
 };
 
+type Feedback = {
+  grammar: string;
+  vocabulary: string;
+  fluency: string;
+  suggestions: string;
+};
+
 export default function ScenarioScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,6 +58,11 @@ export default function ScenarioScreen() {
   
   // Conversation history for Gemini (excludes initial message)
   const [conversationHistory, setConversationHistory] = useState<GeminiMessage[]>([]);
+  
+  // Feedback state
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -60,12 +72,12 @@ export default function ScenarioScreen() {
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && !showFeedback) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages]);
+  }, [messages, showFeedback]);
 
   async function loadScenario() {
     try {
@@ -159,6 +171,44 @@ export default function ScenarioScreen() {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleEndConversation = async () => {
+    if (messages.length <= 1) {
+      // No conversation to analyze
+      router.back();
+      return;
+    }
+
+    setLoadingFeedback(true);
+    
+    try {
+      // Collect all user messages for analysis
+      const userMessages = messages
+        .filter(m => m.role === 'user')
+        .map(m => m.chinese)
+        .join(' ');
+      
+      const aiMessages = messages
+        .filter(m => m.role === 'assistant')
+        .map(m => m.chinese)
+        .join(' ');
+
+      // Get feedback from Gemini
+      const feedbackData = await geminiService.getFeedback(
+        userMessages,
+        aiMessages,
+        'Chinese'
+      );
+
+      setFeedback(feedbackData);
+      setShowFeedback(true);
+    } catch (err: any) {
+      console.error('Error getting feedback:', err);
+      alert('Failed to generate feedback. Please try again.');
+    } finally {
+      setLoadingFeedback(false);
     }
   };
 
@@ -304,6 +354,60 @@ export default function ScenarioScreen() {
     );
   }
 
+  // Show feedback screen
+  if (showFeedback && feedback) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={[styles.container, { paddingBottom: 54 }]}>
+          <StatusBar barStyle="light-content" />
+          
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerContent}>
+              <Text style={styles.headerCategory}>CONVERSATION FEEDBACK</Text>
+              <Text style={styles.headerTitle}>How You Did</Text>
+            </View>
+          </View>
+
+          <ScrollView 
+            style={styles.feedbackContainer}
+            contentContainerStyle={styles.feedbackContent}
+          >
+            <View style={styles.feedbackSection}>
+              <Text style={styles.feedbackLabel}>GRAMMAR</Text>
+              <Text style={styles.feedbackText}>{feedback.grammar}</Text>
+            </View>
+
+            <View style={styles.feedbackSection}>
+              <Text style={styles.feedbackLabel}>VOCABULARY</Text>
+              <Text style={styles.feedbackText}>{feedback.vocabulary}</Text>
+            </View>
+
+            <View style={styles.feedbackSection}>
+              <Text style={styles.feedbackLabel}>FLUENCY</Text>
+              <Text style={styles.feedbackText}>{feedback.fluency}</Text>
+            </View>
+
+            <View style={styles.feedbackSection}>
+              <Text style={styles.feedbackLabel}>SUGGESTIONS</Text>
+              <Text style={styles.feedbackText}>{feedback.suggestions}</Text>
+            </View>
+          </ScrollView>
+
+          <View style={styles.feedbackActions}>
+            <TouchableOpacity 
+              style={styles.doneButton} 
+              onPress={() => router.back()}
+            >
+              <Text style={styles.doneButtonText}>DONE</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </>
+    );
+  }
+
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -323,6 +427,17 @@ export default function ScenarioScreen() {
             <Text style={styles.headerCategory}>{scenario.category}</Text>
             <Text style={styles.headerTitle}>{scenario.title}</Text>
           </View>
+          <TouchableOpacity 
+            onPress={handleEndConversation} 
+            style={styles.endButton}
+            disabled={loadingFeedback}
+          >
+            {loadingFeedback ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={styles.endButtonText}>END</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Mode Toggle */}
@@ -511,6 +626,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
+  },
+  endButton: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: borders.width,
+    borderColor: colors.border,
+    borderRadius: borders.radius,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  endButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+    letterSpacing: 0.5,
   },
   modeToggle: {
     flexDirection: 'row',
@@ -709,5 +840,49 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.black,
+  },
+  feedbackContainer: {
+    flex: 1,
+  },
+  feedbackContent: {
+    padding: spacing.xl,
+  },
+  feedbackSection: {
+    marginBottom: spacing.xl,
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: borders.width,
+    borderColor: colors.border,
+    borderRadius: borders.radius,
+    padding: spacing.lg,
+  },
+  feedbackLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 1,
+    marginBottom: spacing.md,
+  },
+  feedbackText: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: colors.text,
+    lineHeight: 22,
+  },
+  feedbackActions: {
+    padding: spacing.xl,
+    borderTopWidth: borders.width,
+    borderTopColor: colors.border,
+  },
+  doneButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    borderRadius: borders.radius,
+    alignItems: 'center',
+  },
+  doneButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.black,
+    letterSpacing: 0.5,
   },
 });

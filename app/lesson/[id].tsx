@@ -109,8 +109,14 @@ export default function LessonScreen() {
       // Add words learned
       await unifiedProgressService.addWordsLearned(vocabulary.length);
 
-      // Navigate back to course
-      router.back();
+      // Navigate to scenario selection for practice
+      router.push({
+        pathname: '/lesson/practice',
+        params: { 
+          lessonId: lesson.id,
+          vocabularyCount: vocabulary.length
+        }
+      });
     } catch (err) {
       console.error('Error completing lesson:', err);
     }
@@ -269,7 +275,7 @@ export default function LessonScreen() {
                 onPress={completeLesson}
               >
                 <Text style={[styles.navButtonText, styles.completeButtonText]}>
-                  ✓ Complete Lesson
+                Complete Lesson
                 </Text>
               </TouchableOpacity>
             ) : (

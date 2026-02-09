@@ -36,14 +36,17 @@ export default function FreeChatScreen() {
     {
       id: '0',
       role: 'assistant',
-      chinese: '你好！我是LangCat。我们可以用中文聊任何话题。你想聊什么？',
-      pinyin: 'Nǐ hǎo! Wǒ shì LangCat. Wǒmen kěyǐ yòng Zhōngwén liáo rènhé huàtí. Nǐ xiǎng liáo shénme?',
+      chinese: 'ä½ å¥½ï¼æˆ‘æ˜¯LangCatã€‚æˆ‘ä»¬å¯ä»¥ç”¨ä¸­æ–‡èŠä»»ä½•è¯é¢˜ã€‚ä½ æƒ³èŠä»€ä¹ˆï¼Ÿ',
+      pinyin: 'NÇ hÇŽo! WÇ’ shÃ¬ LangCat. WÇ’men kÄ›yÇ yÃ²ng ZhÅngwÃ©n liÃ¡o rÃ¨nhÃ© huÃ tÃ­. NÇ xiÇŽng liÃ¡o shÃ©nme?',
       english: 'Hello! I\'m LangCat. We can chat about anything in Chinese. What would you like to talk about?',
     }
   ]);
   const [isSending, setIsSending] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<GeminiMessage[]>([]);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [showGrading, setShowGrading] = useState(false);
+  const [grading, setGrading] = useState(false);
+  const [gradingResult, setGradingResult] = useState<any>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -123,8 +126,8 @@ Stay in character as a helpful language learning companion. Be conversational an
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        chinese: '抱歉，出错了。',
-        pinyin: 'Bàoqiàn, chūcuò le.',
+        chinese: 'æŠ±æ­‰ï¼Œå‡ºé”™äº†ã€‚',
+        pinyin: 'BÃ oqiÃ n, chÅ«cuÃ² le.',
         english: `Sorry, an error occurred: ${err.message || 'Please try again.'}`,
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -158,6 +161,69 @@ Stay in character as a helpful language learning companion. Be conversational an
     console.log('Voice recording not yet implemented');
   };
 
+  const handleEndConversation = async () => {
+    if (messages.length <= 1) {
+      alert('Have a conversation first before ending!');
+      return;
+    }
+
+    setGrading(true);
+    
+    try {
+      // Prepare conversation transcript
+      const transcript = messages
+        .filter(m => m.role === 'user')
+        .map((m, i) => `${i + 1}. ${m.chinese}`)
+        .join('\n');
+
+      // Ask Gemini to grade the conversation
+      const gradingPrompt = `You are a Chinese language teacher. Grade this conversation based on:
+
+1. Grammar accuracy (0-10)
+2. Vocabulary usage (0-10)
+3. Sentence structure (0-10)
+4. Overall fluency (0-10)
+
+Student's messages:
+${transcript}
+
+Provide a JSON response with:
+{
+  "grammar": number,
+  "vocabulary": number,
+  "structure": number,
+  "fluency": number,
+  "totalScore": number (out of 40),
+  "strengths": ["strength1", "strength2"],
+  "improvements": ["area1", "area2"],
+  "feedback": "Brief encouraging feedback in English"
+}`;
+
+      const response = await geminiService.getScenarioResponse(
+        gradingPrompt,
+        {
+          system_prompt: 'You are a professional Chinese language evaluator. Provide constructive feedback.',
+          title: 'Grading',
+          category: 'Assessment'
+        },
+        []
+      );
+
+      // Parse grading result
+      const gradingText = response.chinese.replace(/```json|```/g, '').trim();
+      const result = JSON.parse(gradingText);
+      
+      setGradingResult(result);
+      setShowGrading(true);
+      
+    } catch (error) {
+      console.error('Grading error:', error);
+      alert('Failed to grade conversation. Please try again.');
+    } finally {
+      setGrading(false);
+    }
+  };
+
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -177,6 +243,15 @@ Stay in character as a helpful language learning companion. Be conversational an
             <Text style={styles.headerCategory}>FREE CONVERSATION</Text>
             <Text style={styles.headerTitle}>Chat with LangCat</Text>
           </View>
+          <TouchableOpacity 
+            onPress={handleEndConversation} 
+            style={styles.endButton}
+            disabled={grading}
+          >
+            <Text style={styles.endButtonText}>
+              {grading ? '...' : 'End'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Mode Toggle */}
@@ -289,7 +364,7 @@ Stay in character as a helpful language learning companion. Be conversational an
               onPress={handleSendMessage}
               disabled={!inputText.trim() || isSending}
             >
-              <Text style={styles.sendButtonText}>→</Text>
+              <Text style={styles.sendButtonText}>â†’</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -305,6 +380,69 @@ Stay in character as a helpful language learning companion. Be conversational an
               />
             </TouchableOpacity>
             <Text style={styles.voiceInstructions}>TAP TO SPEAK</Text>
+          </View>
+        )}
+        
+        {/* Grading Modal */}
+        {showGrading && gradingResult && (
+          <View style={styles.gradingOverlay}>
+            <View style={styles.gradingModal}>
+              <Text style={styles.gradingTitle}>Conversation Grade</Text>
+              
+              <View style={styles.scoreContainer}>
+                <Text style={styles.totalScore}>
+                  {gradingResult.totalScore}/40
+                </Text>
+                <Text style={styles.scoreLabel}>Total Score</Text>
+              </View>
+
+              <View style={styles.detailScores}>
+                <View style={styles.scoreRow}>
+                  <Text style={styles.scoreCategory}>Grammar</Text>
+                  <Text style={styles.scoreValue}>{gradingResult.grammar}/10</Text>
+                </View>
+                <View style={styles.scoreRow}>
+                  <Text style={styles.scoreCategory}>Vocabulary</Text>
+                  <Text style={styles.scoreValue}>{gradingResult.vocabulary}/10</Text>
+                </View>
+                <View style={styles.scoreRow}>
+                  <Text style={styles.scoreCategory}>Structure</Text>
+                  <Text style={styles.scoreValue}>{gradingResult.structure}/10</Text>
+                </View>
+                <View style={styles.scoreRow}>
+                  <Text style={styles.scoreCategory}>Fluency</Text>
+                  <Text style={styles.scoreValue}>{gradingResult.fluency}/10</Text>
+                </View>
+              </View>
+
+              <View style={styles.feedbackSection}>
+                <Text style={styles.feedbackTitle}>Strengths</Text>
+                {gradingResult.strengths.map((strength: string, i: number) => (
+                  <Text key={i} style={styles.feedbackItem}>• {strength}</Text>
+                ))}
+              </View>
+
+              <View style={styles.feedbackSection}>
+                <Text style={styles.feedbackTitle}>Areas to Improve</Text>
+                {gradingResult.improvements.map((improvement: string, i: number) => (
+                  <Text key={i} style={styles.feedbackItem}>• {improvement}</Text>
+                ))}
+              </View>
+
+              <View style={styles.feedbackSection}>
+                <Text style={styles.feedbackText}>{gradingResult.feedback}</Text>
+              </View>
+
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => {
+                  setShowGrading(false);
+                  router.back();
+                }}
+              >
+                <Text style={styles.closeButtonText}>DONE</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -519,5 +657,112 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 1,
+  },
+  endButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  endButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  gradingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  gradingModal: {
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: borders.width * 2,
+    borderColor: colors.border,
+    borderRadius: borders.radius * 2,
+    padding: spacing.xxl,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  gradingTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  scoreContainer: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  totalScore: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  scoreLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  detailScores: {
+    marginBottom: spacing.xl,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: borders.width,
+    borderBottomColor: colors.border,
+  },
+  scoreCategory: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  scoreValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  feedbackSection: {
+    marginBottom: spacing.lg,
+  },
+  feedbackTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  feedbackItem: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    lineHeight: 20,
+  },
+  feedbackText: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: colors.text,
+    lineHeight: 22,
+  },
+  closeButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    borderRadius: borders.radius,
+    marginTop: spacing.lg,
+  },
+  closeButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.black,
+    letterSpacing: 0.5,
   },
 });

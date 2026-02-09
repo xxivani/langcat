@@ -59,9 +59,5 @@ LangCat wouldn't be possible without Gemini 3's advanced language capabilities:
 
 ## Built For
 
-Google DeepMind Gemini 3 Hackathon (December 2025 - February 2026)
-
-## Why Immersion Works
-
-Decades of second language acquisition research—from Stephen Krashen's input hypothesis to modern studies on communicative competence—consistently show that conversational immersion is the most effective path to fluency. LangCat brings this proven method to anyone with a smartphone, powered by Gemini 3.
+Google DeepMind Gemini 3 Hackathon 
 

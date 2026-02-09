@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -127,11 +128,21 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerSubtitle}>
-            MANDARIN · HSK {progress?.currentLevel || 1}
-          </Text>
-          <Text style={styles.headerTitle}>Progress</Text>
+          <View style={{flexDirection: "row", justifyContent: "space-between", alignItems: "center"}}>
+            <View>
+              <Text style={styles.headerSubtitle}>
+                MANDARIN · HSK {progress?.currentLevel || 1}
+              </Text>
+              <Text style={styles.headerTitle}>Progress</Text>
+            </View>
+            <Image 
+              source={require('../../assets/images/langcat-logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
         </View>
+
 
         {/* Main Progress */}
         <View style={styles.mainProgressSection}>
@@ -215,7 +226,7 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.practiceItem} activeOpacity={0.8}>
               <Text style={styles.practiceItemText}>Assignment 1</Text>
               <View style={styles.arrowIcon}>
-                <Text style={styles.arrowText}>â†’</Text>
+                <Text style={styles.arrowText}>Ã¢â€ â€™</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -267,6 +278,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.md,
   },
+  headerTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
   headerTitle: {
     fontSize: 38,
     fontFamily: 'ArchivoBlack_400Regular', 
@@ -275,6 +291,10 @@ const styles = StyleSheet.create({
   },
   mainProgressSection: {
     marginBottom: spacing.xxxl,
+  },
+  logo: {
+    width: 106,
+    height: 106,
   },
   progressPercentage: {
     fontSize: 48,

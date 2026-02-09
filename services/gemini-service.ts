@@ -128,11 +128,12 @@ Guidelines:
   }
 
   /**
-   * Get conversation feedback for learning
+   * Get conversation feedback for the USER's learning performance
+   * Analyzes only the user's messages, not the AI responses
    */
   async getFeedback(
-    userMessage: string,
-    aiResponse: string,
+    userMessages: string,
+    scenarioContext: string,
     targetLanguage: string
   ): Promise<{
     grammar: string;
@@ -140,20 +141,26 @@ Guidelines:
     fluency: string;
     suggestions: string;
   }> {
-    const systemInstruction = `You are a language learning expert. Analyze the conversation and provide constructive feedback.`;
+    const systemInstruction = `You are a language learning expert providing feedback to a student learning ${targetLanguage}.
 
-    const feedbackPrompt = `Analyze this ${targetLanguage} language exchange:
+IMPORTANT: Focus your feedback ONLY on the student's performance. Do not provide feedback about the AI conversation partner.`;
 
-User: "${userMessage}"
-AI: "${aiResponse}"
+    const feedbackPrompt = `The student practiced ${targetLanguage} in a conversation scenario: "${scenarioContext}"
+
+Student's messages in Chinese:
+"${userMessages}"
+
+Analyze ONLY the student's Chinese language performance and provide constructive, encouraging feedback.
 
 Provide JSON feedback with these exact fields:
 {
-  "grammar": "grammar feedback",
-  "vocabulary": "vocabulary feedback", 
-  "fluency": "fluency feedback",
-  "suggestions": "improvement suggestions"
-}`;
+  "grammar": "Feedback on the student's grammar usage (e.g., sentence structure, word order, particle usage)",
+  "vocabulary": "Feedback on the student's vocabulary choices and word usage", 
+  "fluency": "Feedback on the student's conversational flow and naturalness",
+  "suggestions": "Specific suggestions for how the student can improve"
+}
+
+Remember: Give feedback about the STUDENT's Chinese, not about the AI's responses.`;
 
     try {
       const response = await this.sendMessage(feedbackPrompt, systemInstruction, []);
@@ -164,10 +171,10 @@ Provide JSON feedback with these exact fields:
       }
       
       return {
-        grammar: 'Good effort!',
-        vocabulary: 'Keep practicing',
-        fluency: 'Making progress',
-        suggestions: 'Practice regularly'
+        grammar: 'Good effort on your grammar!',
+        vocabulary: 'Keep practicing your vocabulary',
+        fluency: 'You are making progress',
+        suggestions: 'Keep practicing regularly to improve'
       };
     } catch (error) {
       console.error('Feedback Error:', error);

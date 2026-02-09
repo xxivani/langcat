@@ -29,7 +29,12 @@ export class AudioService {
       // Generate TTS audio from Gemini - following official docs structure
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
-        contents: text, // Wrap text in proper structure
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `Read this text aloud: ${text}` }]
+          }
+        ],
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: {

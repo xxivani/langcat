@@ -148,13 +148,12 @@ export default function ScenarioScreen() {
 
       setMessages(prev => [...prev, aiMessage]);
 
-      // Update conversation history with AI response
+      // Update conversation history - store in a format that maintains context
+      // Use the Chinese + English for context, but structure it naturally
+      const contextMessage = `${response.chinese} (${response.english})`;
       setConversationHistory([
         ...updatedHistory,
-        {
-          role: 'model',
-          parts: [{ text: JSON.stringify(response) }]
-        }
+        { role: 'model', parts: [{ text: contextMessage }] }
       ]);
 
     } catch (err: any) {
@@ -190,15 +189,16 @@ export default function ScenarioScreen() {
         .map(m => m.chinese)
         .join(' ');
       
-      const aiMessages = messages
-        .filter(m => m.role === 'assistant')
-        .map(m => m.chinese)
-        .join(' ');
+      if (!userMessages.trim()) {
+        // No user messages to analyze
+        router.back();
+        return;
+      }
 
-      // Get feedback from Gemini
+      // Get feedback from Gemini - only analyzing user's Chinese
       const feedbackData = await geminiService.getFeedback(
         userMessages,
-        aiMessages,
+        scenario.title, // Pass scenario context instead of AI messages
         'Chinese'
       );
 
@@ -283,29 +283,42 @@ export default function ScenarioScreen() {
         };
         setMessages(prev => [...prev, aiMessage]);
 
+        // Update conversation history - store in a format that maintains context
+        // Use the Chinese + English for context, but structure it naturally
+        const contextMessage = `${textResponse.chinese} (${textResponse.english})`;
         setConversationHistory([
           ...updatedHistory,
-          { role: 'model', parts: [{ text: JSON.stringify(textResponse) }] }
+          { role: 'model', parts: [{ text: contextMessage }] }
         ]);
 
-        // Now convert to audio and play
-        const audioResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-preview-tts',
-          contents: textResponse.chinese, // Proper array format
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Aoede' }
+        // Now convert Chinese text to audio using TTS model
+        try {
+          const audioResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-preview-tts',
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `Read this text aloud: ${textResponse.chinese}` }]
+              }
+            ],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Aoede' }
+                }
               }
             }
-          }
-        });
+          });
 
-        // Play audio
-        const audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (audioData) {
-          await audioService.playAudioData(audioData);
+          // Play audio
+          const audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (audioData) {
+            await audioService.playAudioData(audioData);
+          }
+        } catch (audioError: any) {
+          console.error('TTS Error:', audioError);
+          // Continue even if TTS fails - user can still see the text
         }
         
         setIsSending(false);
@@ -412,7 +425,7 @@ export default function ScenarioScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView 
-        style={[styles.container, { paddingBottom: 54 }]}
+        style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
@@ -555,27 +568,44 @@ export default function ScenarioScreen() {
           </View>
         ) : (
           <View style={styles.voiceContainer}>
+            {isRecording ? (
+              <View style={styles.recordingIndicator}>
+                <View style={styles.recordingWave}>
+                  <View style={[styles.waveBars, styles.waveBar1]} />
+                  <View style={[styles.waveBars, styles.waveBar2]} />
+                  <View style={[styles.waveBars, styles.waveBar3]} />
+                  <View style={[styles.waveBars, styles.waveBar4]} />
+                  <View style={[styles.waveBars, styles.waveBar5]} />
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity 
+                style={[
+                  styles.micButton,
+                  isSending && { opacity: 0.5 }
+                ]} 
+                onPress={handleVoicePress}
+                disabled={isSending}
+              >
+                {isSending ? (
+                  <ActivityIndicator size="large" color={colors.black} />
+                ) : (
+                  <Image
+                    source={require('@/assets/icons/icons8-voice-recorder-64.png')}
+                    style={styles.micIcon}
+                  />
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity 
-              style={[
-                styles.micButton, 
-                isRecording && { backgroundColor: '#ff4444' },
-                isSending && { opacity: 0.5 }
-              ]} 
               onPress={handleVoicePress}
               disabled={isSending}
+              style={styles.voiceInstructionsButton}
             >
-              {isSending ? (
-                <ActivityIndicator size="large" color={colors.black} />
-              ) : (
-                <Image
-                  source={require('@/assets/icons/icons8-voice-recorder-64.png')}
-                  style={styles.micIcon}
-                />
-              )}
+              <Text style={styles.voiceInstructions}>
+                {isSending ? 'PROCESSING...' : isRecording ? 'TAP TO STOP' : 'TAP TO SPEAK'}
+              </Text>
             </TouchableOpacity>
-            <Text style={styles.voiceInstructions}>
-              {isSending ? 'PROCESSING...' : isRecording ? 'TAP TO STOP' : 'TAP TO SPEAK'}
-            </Text>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -789,8 +819,6 @@ const styles = StyleSheet.create({
   voiceContainer: {
     alignItems: 'center',
     paddingVertical: spacing.xxxl,
-    borderTopWidth: borders.width,
-    borderTopColor: colors.border,
   },
   micButton: {
     width: 80,
@@ -805,6 +833,42 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     tintColor: colors.black,
+  },
+  recordingIndicator: {
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  recordingWave: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  waveBars: {
+    width: 4,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
+  waveBar1: {
+    height: 20,
+  },
+  waveBar2: {
+    height: 35,
+  },
+  waveBar3: {
+    height: 50,
+  },
+  waveBar4: {
+    height: 35,
+  },
+  waveBar5: {
+    height: 20,
+  },
+  voiceInstructionsButton: {
+    paddingVertical: spacing.sm,
   },
   voiceInstructions: {
     fontSize: 13,

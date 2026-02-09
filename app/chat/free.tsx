@@ -36,8 +36,8 @@ export default function FreeChatScreen() {
     {
       id: '0',
       role: 'assistant',
-      chinese: 'ä½ å¥½ï¼æˆ‘æ˜¯LangCatã€‚æˆ‘ä»¬å¯ä»¥ç”¨ä¸­æ–‡èŠä»»ä½•è¯é¢˜ã€‚ä½ æƒ³èŠä»€ä¹ˆï¼Ÿ',
-      pinyin: 'NÇ hÇŽo! WÇ’ shÃ¬ LangCat. WÇ’men kÄ›yÇ yÃ²ng ZhÅngwÃ©n liÃ¡o rÃ¨nhÃ© huÃ tÃ­. NÇ xiÇŽng liÃ¡o shÃ©nme?',
+      chinese: '你好！我是LangCat。我们可以用中文聊任何话题。你想聊什么？',
+      pinyin: 'Nǐ hǎo! Wǒ shì LangCat. Wǒmen kěyǐ yòng Zhōngwén liáo rènhé huàtí. Nǐ xiǎng liáo shénme?',
       english: 'Hello! I\'m LangCat. We can chat about anything in Chinese. What would you like to talk about?',
     }
   ]);
@@ -126,8 +126,8 @@ Stay in character as a helpful language learning companion. Be conversational an
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        chinese: 'æŠ±æ­‰ï¼Œå‡ºé”™äº†ã€‚',
-        pinyin: 'BÃ oqiÃ n, chÅ«cuÃ² le.',
+        chinese: '抱歉，出错了。',
+        pinyin: 'Bàoqiàn, chūcuò le.',
         english: `Sorry, an error occurred: ${err.message || 'Please try again.'}`,
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -228,7 +228,7 @@ Provide a JSON response with:
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView 
-        style={[styles.container, { paddingBottom:54 }]}
+        style={[styles.container, { paddingBottom:24 }]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
@@ -364,7 +364,7 @@ Provide a JSON response with:
               onPress={handleSendMessage}
               disabled={!inputText.trim() || isSending}
             >
-              <Text style={styles.sendButtonText}>â†’</Text>
+              <Text style={styles.sendButtonText}>→</Text>
             </TouchableOpacity>
           </View>
         ) : (

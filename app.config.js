@@ -9,7 +9,8 @@ export default {
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
-      supportsTablet: true
+      supportsTablet: true,
+      bundleIdentifier: "com.miaumiaunoway.langcat"
     },
     android: {
       package: "com.miaumiaunoway.langcat", 
@@ -29,7 +30,7 @@ export default {
       [
         "expo-splash-screen",
         {
-          image: "./assets/images/langcat-logo.png",
+          image: "./assets/images/langcat-logo.png", 
           imageWidth: 200,
           resizeMode: "contain",
           backgroundColor: "#ffffff",
